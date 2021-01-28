@@ -6,8 +6,7 @@ import tpl_chatbox_head from 'templates/chatbox_head.js';
 import tpl_spinner from 'templates/spinner.js';
 import { __ } from 'i18n';
 import { _converse, api, converse } from '@converse/headless/core';
-import { debounce } from 'lodash-es';
-import { html, render } from 'lit-html';
+import { render } from 'lit-html';
 
 const u = converse.env.utils;
 const { dayjs } = converse.env;
@@ -71,8 +70,7 @@ export default class ChatView extends BaseChatView {
         this.listenTo(this.model, 'change:show_help_messages', this.renderHelpMessages);
 
         await this.model.messages.fetched;
-        this.model.maybeShow();
-        this.scrollDown();
+        !this.model.get('hidden') && this.afterShown()
         /**
          * Triggered once the {@link _converse.ChatBoxView} has been initialized
          * @event _converse#chatBoxViewInitialized
@@ -80,21 +78,6 @@ export default class ChatView extends BaseChatView {
          * @example _converse.api.listen.on('chatBoxViewInitialized', view => { ... });
          */
         api.trigger('chatBoxViewInitialized', this);
-    }
-
-    initDebounced () {
-        this.markScrolled = debounce(this._markScrolled, 100);
-        this.debouncedScrollDown = debounce(this.scrollDown, 100);
-
-        // For tests that use Jasmine.Clock we want to turn of
-        // debouncing, since setTimeout breaks.
-        if (api.settings.get('debounced_content_rendering')) {
-            this.renderChatHistory = debounce(() => this.renderChatContent(false), 100);
-            this.renderNotifications = debounce(() => this.renderChatContent(true), 100);
-        } else {
-            this.renderChatHistory = () => this.renderChatContent(false);
-            this.renderNotifications = () => this.renderChatContent(true);
-        }
     }
 
     render () {
@@ -108,22 +91,6 @@ export default class ChatView extends BaseChatView {
         this.renderMessageForm();
         this.renderHeading();
         return this;
-    }
-
-    onMessageAdded (message) {
-        this.renderChatHistory();
-
-        if (u.isNewMessage(message)) {
-            if (message.get('sender') === 'me') {
-                // We remove the "scrolled" flag so that the chat area
-                // gets scrolled down. We always want to scroll down
-                // when the user writes a message as opposed to when a
-                // message is received.
-                this.model.set('scrolled', false);
-            } else if (this.model.get('scrolled', true)) {
-                this.showNewMessagesIndicator();
-            }
-        }
     }
 
     getNotifications () {
@@ -145,22 +112,6 @@ export default class ChatView extends BaseChatView {
             `<strong>/me</strong>: ${__('Write in the third person')}`,
             `<strong>/help</strong>: ${__('Show this menu')}`
         ];
-    }
-
-    renderHelpMessages () {
-        render(
-            html`
-                <converse-chat-help
-                    .model=${this.model}
-                    .messages=${this.getHelpMessages()}
-                    ?hidden=${!this.model.get('show_help_messages')}
-                    type="info"
-                    chat_type="${this.model.get('type')}"
-                ></converse-chat-help>
-            `,
-
-            this.help_container
-        );
     }
 
     showControlBox () {
@@ -472,10 +423,6 @@ export default class ChatView extends BaseChatView {
         }
     }
 
-    getOwnMessages () {
-        return this.model.messages.filter({ 'sender': 'me' });
-    }
-
     onEscapePressed (ev) {
         ev.preventDefault();
         const idx = this.model.messages.findLastIndex('correcting');
@@ -506,89 +453,12 @@ export default class ChatView extends BaseChatView {
         }
     }
 
-    onMessageEditButtonClicked (message) {
-        const currently_correcting = this.model.messages.findWhere('correcting');
-        const unsent_text = this.querySelector('.chat-textarea')?.value;
-        if (unsent_text && (!currently_correcting || currently_correcting.get('message') !== unsent_text)) {
-            if (!confirm(__('You have an unsent message which will be lost if you continue. Are you sure?'))) {
-                return;
-            }
-        }
-
-        if (currently_correcting !== message) {
-            currently_correcting?.save('correcting', false);
-            message.save('correcting', true);
-            this.insertIntoTextArea(u.prefixMentions(message), true, true);
-        } else {
-            message.save('correcting', false);
-            this.insertIntoTextArea('', true, false);
-        }
-    }
-
-    editLaterMessage () {
-        let message;
-        let idx = this.model.messages.findLastIndex('correcting');
-        if (idx >= 0) {
-            this.model.messages.at(idx).save('correcting', false);
-            while (idx < this.model.messages.length - 1) {
-                idx += 1;
-                const candidate = this.model.messages.at(idx);
-                if (candidate.get('editable')) {
-                    message = candidate;
-                    break;
-                }
-            }
-        }
-        if (message) {
-            this.insertIntoTextArea(u.prefixMentions(message), true, true);
-            message.save('correcting', true);
-        } else {
-            this.insertIntoTextArea('', true, false);
-        }
-    }
-
-    editEarlierMessage () {
-        let message;
-        let idx = this.model.messages.findLastIndex('correcting');
-        if (idx >= 0) {
-            this.model.messages.at(idx).save('correcting', false);
-            while (idx > 0) {
-                idx -= 1;
-                const candidate = this.model.messages.at(idx);
-                if (candidate.get('editable')) {
-                    message = candidate;
-                    break;
-                }
-            }
-        }
-        message =
-            message ||
-            this.getOwnMessages()
-                .reverse()
-                .find(m => m.get('editable'));
-        if (message) {
-            this.insertIntoTextArea(u.prefixMentions(message), true, true);
-            message.save('correcting', true);
-        }
-    }
-
     inputChanged (ev) { // eslint-disable-line class-methods-use-this
         const height = ev.target.scrollHeight + 'px';
         if (ev.target.style.height != height) {
             ev.target.style.height = 'auto';
             ev.target.style.height = height;
         }
-    }
-
-    async clearMessages (ev) {
-        if (ev && ev.preventDefault) {
-            ev.preventDefault();
-        }
-        const result = confirm(__('Are you sure you want to clear the messages from this conversation?'));
-        if (result === true) {
-            await this.model.clearMessages();
-        }
-        return this;
     }
 
     onPresenceChanged (item) {
@@ -637,10 +507,6 @@ export default class ChatView extends BaseChatView {
         this.model.setChatState(_converse.ACTIVE);
         this.scrollDown();
         this.maybeFocus();
-    }
-
-    showNewMessagesIndicator () {
-        u.showElement(this.querySelector('.new-msgs-indicator'));
     }
 
     viewUnreadMessages () {
