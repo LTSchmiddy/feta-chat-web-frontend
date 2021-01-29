@@ -380,14 +380,14 @@ describe("Groupchats", function () {
                 'time': '2021-02-02T12:00:00Z'
             });
             expect(view.model.session.get('connection_status')).toBe(converse.ROOMSTATUS.NICKNAME_REQUIRED);
-            await u.waitUntil(() => view.el.querySelectorAll('converse-chat-message').length === 1);
+            await u.waitUntil(() => view.querySelectorAll('converse-chat-message').length === 1);
 
             const sel = 'converse-message-history converse-chat-message .chat-msg__text';
-            await u.waitUntil(() => view.el.querySelector(sel)?.textContent.trim());
-            expect(view.el.querySelector(sel).textContent.trim()).toBe('Hello world')
+            await u.waitUntil(() => view.querySelector(sel)?.textContent.trim());
+            expect(view.querySelector(sel).textContent.trim()).toBe('Hello world')
 
-            view.el.querySelector('[name="nick"]').value = nick;
-            view.el.querySelector('.muc-nickname-form input[type="submit"]').click();
+            view.querySelector('[name="nick"]').value = nick;
+            view.querySelector('.muc-nickname-form input[type="submit"]').click();
             _converse.connection.IQ_stanzas = [];
             await mock.getRoomFeatures(_converse, muc_jid);
             await u.waitUntil(() => view.model.session.get('connection_status') === converse.ROOMSTATUS.CONNECTING);
