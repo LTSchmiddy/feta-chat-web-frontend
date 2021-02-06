@@ -129,6 +129,7 @@
                     border-radius: 10%;
                     padding: 0.2em 0.4em;
                     font-size: var(--font-size-small);
+                    margin-right: 0;
                 }
 
                 .contact-name {
@@ -144,7 +145,7 @@
                         max-width: 60%;
                     }
                     &.contact-name--offline {
-                        margin-left: 0.7em;
+                        margin-left: 0.25em;
                     }
                 }
             }
